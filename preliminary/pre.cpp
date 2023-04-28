@@ -1,328 +1,336 @@
-//
-// Created by chihi on 2023/04/26.
-//
-#include <iostream>
-#include <fstream>
-#include <stack>
-#include <queue>
-#include <string>
-#include <vector>
-#include <memory>
-#include <cctype>
-#include <set>
+#include<iostream>
+#include<vector>
+#include<string>
+#include<set>
+#include<stack>
+#include <algorithm>
 
-class State {
-public:
-    int id;
-    char symbol;
-    std::vector<int> transitions;
+using namespace std;
 
-    State(int id, char symbol) : id(id), symbol(symbol) {}
+struct trans {
+	int vertex_from;
+	int vertex_to;
+	char trans_symbol;
 };
 
 class NFA {
 public:
-    std::vector<std::shared_ptr<State>> states;
-    int initialState;
-    int finalState;
+	vector<int> vertex;
+	vector<trans> transitions;
+	int final_state;
+
+	NFA() {
+	}
+
+	int get_vertex_count() {
+		return vertex.size();
+	}
+
+	void set_vertex(int no_vertex) {
+		for(int i = 0; i < no_vertex; i++) {
+			vertex.push_back(i);
+		}
+	}
+
+	void set_transition(int vertex_from, int vertex_to, char trans_symbol) {
+		trans new_trans;
+		new_trans.vertex_from = vertex_from;
+		new_trans.vertex_to = vertex_to;
+		new_trans.trans_symbol = trans_symbol;
+		transitions.push_back(new_trans);
+	}
+
+	void set_final_state(int fs) {
+		final_state = fs;
+	}
+
+	int get_final_state() {
+		return final_state;
+	}
+
+	void display() {
+		trans new_trans;
+		cout<<"\n";
+		for(int i = 0; i < transitions.size(); i++) {
+			new_trans = transitions.at(i);
+			cout<<"q"<<new_trans.vertex_from<<" --> q"<<new_trans.vertex_to<<" : Symbol - "<<new_trans.trans_symbol<<endl;
+		}
+		cout<<"\nThe final state is q"<<get_final_state()<<endl;
+	}
 };
 
-std::string preprocessor(const std::string &regex);
-std::string postfix(const std::string &regex);
-std::shared_ptr<State> createState(int id, char symbol);
-NFA createNFA(char symbol);
-NFA concatNFAs(NFA &nfa1, NFA &nfa2);
-NFA orNFAs(NFA &nfa1, NFA &nfa2);
-NFA closureNFA(NFA &nfa);
-NFA positiveNFA(NFA &nfa);
-NFA thompson(const std::string &postfixRegex);
-void epsilonClosure(const NFA &nfa, int state, std::set<int> &closure);
-bool accepts(NFA &nfa, const std::string &input);
-bool isValidRegex(const std::string &regex);
-void printNFA(const NFA &nfa);
 
-int main(int argc, char *argv[]) {
-    std::string regex;
-    if (argc == 2) {
-        std::ifstream file(argv[1]);
-        if (file) {
-            std::getline(file, regex);
-            file.close();
-        } else {
-            std::cerr << "Error: Unable to open the file." << std::endl;
-            return 1;
+NFA* concat(NFA* a, NFA* b) {
+	NFA* result = new NFA();
+	result->set_vertex(a->get_vertex_count() + b->get_vertex_count() - 1);
+	int i;
+	trans new_trans;
+
+	for(i = 0; i < a->transitions.size(); i++) {
+		new_trans = a->transitions.at(i);
+		result->set_transition(new_trans.vertex_from, new_trans.vertex_to, new_trans.trans_symbol);
+	}
+
+	for(i = 0; i < b->transitions.size(); i++) {
+		new_trans = b->transitions.at(i);
+		result->set_transition(new_trans.vertex_from + a->get_vertex_count() - 1, new_trans.vertex_to + a->get_vertex_count() - 1, new_trans.trans_symbol);
+	}
+
+	result->set_final_state(a->get_vertex_count() + b->get_vertex_count() - 2);
+
+	return result;
+}
+
+NFA* kleene(NFA* a) {
+	NFA* result = new NFA();
+	int i;
+	trans new_trans;
+	
+	result->set_vertex(a->get_vertex_count() + 2);
+
+	result->set_transition(0, 1, '^');
+
+	for(i = 0; i < a->transitions.size(); i++) {
+		new_trans = a->transitions.at(i);
+		result->set_transition(new_trans.vertex_from + 1, new_trans.vertex_to + 1, new_trans.trans_symbol);
+	}
+
+	result->set_transition(a->get_vertex_count(), a->get_vertex_count() + 1, '^');
+	result->set_transition(a->get_vertex_count(), 1, '^');
+	result->set_transition(0, a->get_vertex_count() + 1, '^');
+
+	result->set_final_state(a->get_vertex_count() + 1);
+
+	return result;
+}
+
+NFA* or_selection(vector<NFA> selections, int no_of_selections) {
+	NFA* result = new NFA();
+	int vertex_count = 2;
+	int i, j;
+	NFA med;
+	trans new_trans;
+
+	for(i = 0; i < no_of_selections; i++) {
+		vertex_count += selections.at(i).get_vertex_count();
+	}
+
+	result->set_vertex(vertex_count);
+	
+	int adder_track = 1;
+
+	for(i = 0; i < no_of_selections; i++) {
+		result->set_transition(0, adder_track, '^');
+		med = selections.at(i);
+		for(j = 0; j < med.transitions.size(); j++) {
+			new_trans = med.transitions.at(j);
+			result->set_transition(new_trans.vertex_from + adder_track, new_trans.vertex_to + adder_track, new_trans.trans_symbol);
+		}
+		adder_track += med.get_vertex_count();
+
+		result->set_transition(adder_track - 1, vertex_count - 1, '^');
+	}
+
+	result->set_final_state(vertex_count - 1);
+
+	return result;
+}
+
+/*
+Grammar for regex:
+regex = exp $
+exp      = term [|] exp
+         | term
+         |                   empty
+term     = factor term
+         | factor
+factor   = primary [*]
+         | primary
+primary  = \( exp \)
+         | char 
+*/
+class parser {
+    string input;
+    int pos;
+    vector<int> output;
+public:
+    parser(string s) {
+        input = s;
+        pos = 0;
+    }
+
+    void primary() {
+        if (pos >= input.length()) {
+            return;
         }
-    } else {
-        std::cout << "Enter the regular expression: ";
-        std::getline(std::cin, regex);
+        if (input[pos] == '(') {
+            pos++;
+            exp();
+            if (input[pos] == ')') {
+                pos++;
+            } else {
+                throw "parse error";
+            }
+        } else {
+            output.push_back(input[pos]);
+            pos++;
+        }
+    }
+    void factor() {
+        primary();
+        if (pos < input.length() && input[pos] == '*') {
+            output.push_back(input[pos]);
+            pos++;
+        }
+    }
+    void term() {
+        factor();
+        if (pos < input.length() && input[pos] != ')' && input[pos] != '|') {
+            term();
+            output.push_back('.'); // concatenation
+        }
+    }
+    void exp() {
+        term();
+        if (pos < input.length() && input[pos] == '|') {
+            pos++;
+            exp();
+            output.push_back('|');
+        }
+
     }
 
-    if (!isValidRegex(regex)) {
-        std::cerr << "Error: Invalid regular expression." << std::endl;
-        return 1;
+    void construct(stack<NFA*> &operands) {
+    #if 0
+        for (vector<int>::iterator it = output.begin() ; it != output.end(); ++it) {
+            printf("%c", (char)*it);
+        }
+        printf("\n");
+    #endif
+        for (vector<int>::iterator it = output.begin() ; it != output.end(); ++it) {
+            int c = *it;
+            if (c == '*') {
+                NFA* star_sym = operands.top();
+				operands.pop();
+				operands.push(kleene(star_sym));
+            } else if (c == '|') {
+                NFA* rhs = operands.top();
+				operands.pop();
+                NFA* lhs = operands.top();
+                operands.pop();
+
+	            vector<NFA> selections(2, NFA());
+	            selections.at(0) = *lhs;
+        	    selections.at(1) = *rhs;
+	            operands.push(or_selection(selections, 2));
+            } else if (c == '.' ) {
+                NFA* rhs = operands.top();
+				operands.pop();
+                NFA* lhs = operands.top();
+                operands.pop();
+                operands.push(concat(lhs, rhs));
+            } else {
+                NFA* new_sym = new NFA();
+			    new_sym->set_vertex(2);
+			    new_sym->set_transition(0, 1, c);
+			    new_sym->set_final_state(1);
+			    operands.push(new_sym);
+            }
+        }
     }
+    void parse(stack<NFA*> &operands) {
+        exp(); // convert to reverse Polish notation
+        construct(operands);
+    }
+};
 
-    std::string preprocessedRegex = preprocessor(regex);
-    std::cout << "Preprocessed: " << preprocessedRegex << std::endl;
-    std::string postfixRegex = postfix(preprocessedRegex);
-    std::cout << "Postfix: " << postfixRegex << std::endl;
-    NFA nfa = thompson(postfixRegex);
+/*
+ * Convert the regular expression to NFA
+ */
+NFA* re_to_nfa(string re) {
+    stack<NFA*> operands;
+    parser(re).parse(operands);
+    return operands.top();
+}
 
-    printNFA(nfa);
+void _span_epsilon(NFA nfa, set<int> states, set<int> &all_states, set<int> new_states) {
+    for (trans &t : nfa.transitions) {
+        std::set<int>::iterator it;
+        for (it = states.begin(); it != states.end(); it++) {
+            if (t.trans_symbol == '^' && t.vertex_from == *it) {
+                new_states.insert(t.vertex_to);
+                all_states.insert(t.vertex_to);
+            }
+        }
+    }
+    if (!new_states.empty()) {
+        set<int> next;
+        _span_epsilon(nfa, new_states, all_states, next);
+    }
+}
+
+/*
+ * Expand the state set with epsilon transitions
+ */
+void span_epsilon(NFA nfa, set<int> &states) {
+    set<int> all_states = states;
+    set<int> next;
+    _span_epsilon(nfa, states, all_states, next);
+    states.swap(all_states);
+}
+
+/*
+ * Search the next possible states from each of states_in and put them in states_out
+ */
+void search_next_states(NFA nfa, char c, set<int> states_in, set<int> &states_out) {
+    span_epsilon(nfa, states_in);
+    for (trans &t : nfa.transitions) {
+        std::set<int>::iterator it;
+        for (it = states_in.begin(); it != states_in.end(); it++) {
+            if (t.trans_symbol == c && t.vertex_from == *it) {
+                states_out.insert(t.vertex_to);
+            }
+        }
+    }
+    span_epsilon(nfa, states_out);
+}
+
+/*
+ * Check if the input is accepted by the NFA
+ */
+bool accepts(NFA nfa, string input) {
+    set<int> states[input.length()];
+    states[0] = {0};
+    set<int> out;
+    for (int i = 0; i < input.length(); i++) {
+        if (i > 0) {
+            states[i].swap(out); 
+        }
+        char c = input.at(i);       
+        search_next_states(nfa, c, states[i], out);
+    }
+    set<int> last_states = out;
+    return (find(last_states.begin(), last_states.end(), nfa.final_state) != last_states.end());
+}
+
+int main() {
+
+    string re;
+    cout << "Enter a regular expression: ";
+    cin >> re;
+    NFA* required_nfa;
+	required_nfa = re_to_nfa(re);
+	required_nfa->display();	
 
     std::string input;
-    while (true) {
-        std::cout << "Enter the input string (exit to quit): ";
-        std::getline(std::cin, input);
-        if (input == "exit") break;
-        std::cout << (accepts(nfa, input) ? "Accepted" : "Rejected") << std::endl;
-    }
-
-    return 0;
-}
-
-std::string preprocessor(const std::string &regex) {
-    std::string result;
-    char prev = 0;
-
-    for (char c : regex) {
-        if (prev != 0 && prev != '(' && prev != '|' && c != ')' && c != '|' && c != '*' && c != '+') {
-            result.push_back('.');
-        }
-        result.push_back(c);
-        prev = c;
-    }
-
-    return result;
-}
-
-std::string postfix(const std::string &regex) {
-    std::string result;
-    std::stack<char> opStack;
-
-    for (char c : regex) {
-        if (c == '(') {
-            opStack.push(c);
-        } else if (c == ')') {
-            while (!opStack.empty() && opStack.top() != '(') {
-                result.push_back(opStack.top());
-                opStack.pop();
-            }
-            if (!opStack.empty()) {
-                opStack.pop();
-            }
-        } else if (c == '|' || c == '.' || c == '*' || c == '+') {
-            while (!opStack.empty() && opStack.top() != '(') {
-                result.push_back(opStack.top());
-                opStack.pop();
-            }
-            opStack.push(c);
+    cout << "Enter input strings (type 'exit' to quit):" << endl;
+    while(true){
+        cin >> input;
+        if (accepts(*required_nfa, input)) {
+            cout<<"matched\n";
         } else {
-            result.push_back(c);
+            cout<<"does not match\n";
         }
     }
-
-    while (!opStack.empty()) {
-        result.push_back(opStack.top());
-        opStack.pop();
-    }
-
-    return result;
-}
-
-std::shared_ptr<State> createState(int id, char symbol) {
-    return std::make_shared<State>(id, symbol);
-}
-
-NFA createNFA(char symbol) {
-    NFA nfa;
-    nfa.states.push_back(createState(0, symbol));
-    nfa.states.push_back(createState(1, 'E')); // Epsilon transition
-    nfa.states[0]->transitions.push_back(1);
-    nfa.initialState = 0;
-    nfa.finalState = 1;
-
-    return nfa;
-}
-
-NFA concatNFAs(NFA &nfa1, NFA &nfa2) {
-    NFA result;
-    int offset = nfa1.states.size();
-    for (const auto &state : nfa1.states) {
-        result.states.push_back(state);
-    }
-
-    for (const auto &state : nfa2.states) {
-        auto newState = createState(state->id + offset, state->symbol);
-        for (int trans : state->transitions) {
-            newState->transitions.push_back(trans + offset);
-        }
-        result.states.push_back(newState);
-    }
-
-    result.states[nfa1.finalState]->transitions.push_back(nfa2.initialState + offset);
-
-    result.initialState = nfa1.initialState;
-    result.finalState = nfa2.finalState + offset;
-
-    return result;
-}
-
-NFA orNFAs(NFA &nfa1, NFA &nfa2) {
-    NFA result;
-    int offset1 = 1;
-    int offset2 = nfa1.states.size() + 1;
-    result.states.push_back(createState(0, 'E'));
-
-    for (const auto &state : nfa1.states) {
-        auto newState = createState(state->id + offset1, state->symbol);
-        for (int trans : state->transitions) {
-            newState->transitions.push_back(trans + offset1);
-        }
-        result.states.push_back(newState);
-    }
-
-    for (const auto &state : nfa2.states) {
-        auto newState = createState(state->id + offset2, state->symbol);
-        for (int trans : state->transitions) {
-            newState->transitions.push_back(trans + offset2);
-        }
-        result.states.push_back(newState);
-    }
-
-    result.states.push_back(createState(result.states.size(), 'E'));
-
-    result.states[0]->transitions.push_back(nfa1.initialState + offset1);
-    result.states[0]->transitions.push_back(nfa2.initialState + offset2);
-
-    result.states[nfa1.finalState + offset1]->transitions.push_back(result.states.size() - 1);
-    result.states[nfa2.finalState + offset2]->transitions.push_back(result.states.size() - 1);
-
-    result.initialState = 0;
-    result.finalState = result.states.size() - 1;
-
-    return result;
-}
-
-NFA closureNFA(NFA &nfa) {
-    NFA result;
-    int offset = 1;
-    result.states.push_back(createState(0, 'E'));
-
-    for (const auto &state : nfa.states) {
-        auto newState = createState(state->id + offset, state->
-                symbol);
-        for (int trans : state->transitions) {
-            newState->transitions.push_back(trans + offset);
-        }
-        result.states.push_back(newState);
-    }
-    result.states.push_back(createState(result.states.size(), 'E'));
-
-    result.states[0]->transitions.push_back(nfa.initialState + offset);
-    result.states[0]->transitions.push_back(result.states.size() - 1);
-
-    result.states[nfa.finalState + offset]->transitions.push_back(nfa.initialState + offset);
-    result.states[nfa.finalState + offset]->transitions.push_back(result.states.size() - 1);
-
-    result.initialState = 0;
-    result.finalState = result.states.size() - 1;
-
-    return result;
-}
-
-NFA positiveNFA(NFA &nfa) {
-    NFA result = closureNFA(nfa);
-    NFA concat_result = concatNFAs(nfa, result);
-    return concat_result;
-}
-
-NFA thompson(const std::string &postfixRegex) {
-    std::stack<NFA> nfaStack;
-    for (char c : postfixRegex) {
-        if (c == '.') {
-            NFA nfa2 = nfaStack.top();
-            nfaStack.pop();
-            NFA nfa1 = nfaStack.top();
-            nfaStack.pop();
-
-            NFA concat_result = concatNFAs(nfa1, nfa2);
-            nfaStack.push(concat_result);
-        } else if (c == '|') {
-            NFA nfa2 = nfaStack.top();
-            nfaStack.pop();
-            NFA nfa1 = nfaStack.top();
-            nfaStack.pop();
-
-            NFA or_result = orNFAs(nfa1, nfa2);
-            nfaStack.push(or_result);
-        } else if (c == '*') {
-            NFA nfa = nfaStack.top();
-            nfaStack.pop();
-
-            NFA closure_result = closureNFA(nfa);
-            nfaStack.push(closure_result);
-        } else if (c == '+') {
-            NFA nfa = nfaStack.top();
-            nfaStack.pop();
-
-            NFA positive_result = positiveNFA(nfa);
-            nfaStack.push(positive_result);
-        } else {
-            NFA nfa = createNFA(c);
-            nfaStack.push(nfa);
-        }
-    }
-
-    return nfaStack.top();
-}
-
-void epsilonClosure(const NFA &nfa, int state, std::set<int> &closure) {
-    closure.insert(state);
-    for (int trans : nfa.states[state]->transitions) {
-        if (nfa.states[state]->symbol == 'E' && closure.find(trans) == closure.end()) {
-            epsilonClosure(nfa, trans, closure);
-        }
-    }
-}
-
-bool accepts(NFA &nfa, const std::string &input) {
-    std::set<int> currentStates;
-    epsilonClosure(nfa, nfa.initialState, currentStates);
-
-    for (char c : input) {
-        std::set<int> nextStates;
-
-        for (int currentState : currentStates) {
-            if (nfa.states[currentState]->symbol == c) {
-                for (int trans : nfa.states[currentState]->transitions) {
-                    epsilonClosure(nfa, trans, nextStates);
-                }
-            }
-        }
-
-        currentStates = nextStates;
-    }
-
-    return currentStates.find(nfa.finalState) != currentStates.end();
-}
-
-
-bool isValidRegex(const std::string &regex) {
-// Add your regex validation logic here.
-    return true;
-}
-
-void printNFA(const NFA &nfa) {
-    std::cout << "Transition table:" << std::endl;
-    for (const auto &state: nfa.states) {
-        std::cout << state->id << " (" << state->symbol << "): ";
-        for (int trans: state->transitions) {
-            std::cout << trans << " ";
-        }
-        std::cout << std::endl;
-    }
-
-    std::cout << "Initial state: " << nfa.initialState << std::endl;
-    std::cout << "Final state: " << nfa.finalState << std::endl;
+	return 0;
 }
