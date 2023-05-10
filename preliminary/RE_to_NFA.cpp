@@ -138,15 +138,15 @@ NFA* or_selection(vector<NFA> selections, int no_of_selections) {
 
 /*
 Grammar for regex:
-regex = exp $
-exp      = term [|] exp
+regex ::= exp $
+exp      ::= term [|] exp
          | term
          |                   empty
-term     = factor term
+term     ::= factor term
          | factor
-factor   = primary [*]
+factor   ::= primary [*]
          | primary
-primary  = \( exp \)
+primary  ::= \( exp \)
          | char 
 */
 class parser {
@@ -171,29 +171,43 @@ public:
             } else {
                 throw "parse error";
             }
-        } else {
+        } else if (input[pos] != '*' && input[pos] != ')' && input[pos] != '|') {
             output.push_back(input[pos]);
-            pos++;
+            pos++; 
+        } else {
+            throw "parse error";
         }
     }
     void factor() {
         primary();
-        if (pos < input.length() && input[pos] == '*') {
+        if (pos >= input.length()) {
+            return;
+        }
+        if (input[pos] == '*') {
             output.push_back(input[pos]);
             pos++;
         }
     }
     void term() {
         factor();
-        if (pos < input.length() && input[pos] != ')' && input[pos] != '|') {
+        if (pos >= input.length()) {
+            return;
+        } 
+        if (input[pos] != ')' && input[pos] != '|') {
             term();
             output.push_back('.'); // concatenation
         }
     }
     void exp() {
         term();
-        if (pos < input.length() && input[pos] == '|') {
+        if (pos >= input.length()) {
+            return;
+        }
+        if (input[pos] == '|') {
             pos++;
+            if (pos >= input.length()) {
+                throw "parse error";
+            }
             exp();
             output.push_back('|');
         }
@@ -201,7 +215,7 @@ public:
     }
 
     void construct(stack<NFA*> &operands) {
-    #if 0
+    #if 1
         for (vector<int>::iterator it = output.begin() ; it != output.end(); ++it) {
             printf("%c", (char)*it);
         }
@@ -320,14 +334,18 @@ int main(int argc, char* argv[]) {
     }
 	NFA* required_nfa;
     std::string re(argv[1]);
-	required_nfa = re_to_nfa(re);
-	required_nfa->display();	
+    try {
+	    required_nfa = re_to_nfa(re);
+	    required_nfa->display();	
 
-    std::string input(argv[2]);
-    if (accepts(*required_nfa, input)) {
-        cout<<"matched\n";
-    } else {
-        cout<<"does not match\n";
+        std::string input(argv[2]);
+        if (accepts(*required_nfa, input)) {
+            cout<<"matched\n";
+        } else {
+            cout<<"does not match\n";
+        }
+    } catch (const char* e) {
+        cout<<"illegal regexp\n";
     }
 	return 0;
 }
